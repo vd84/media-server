@@ -13,13 +13,13 @@ import (
 
 // Serve a static file (movie) based on its ID with optional streaming support.
 func streamMovieHandler(w http.ResponseWriter, r *http.Request) {
-	movieId := strings.TrimPrefix(r.URL.Path, "/stream/")
-	if movieId == "" {
+	fileName := strings.TrimPrefix(r.URL.Path, "/stream/")
+	if fileName == "" {
 		http.Error(w, "Movie ID is required", http.StatusBadRequest)
 		return
 	}
 
-	filePath := path.Join("./movies", movieId+".mp4")
+	filePath := path.Join("./movies", fileName)
 	file, err := os.Open(filePath)
 	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
@@ -87,13 +87,69 @@ func listMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func main() {
-	http.HandleFunc("/stream/", streamMovieHandler)
+func addMovieHandler(w http.ResponseWriter, r *http.Request) {
+	filename := r.Header.Get("X-Filename")
+	if filename == "" {
+		http.Error(w, "Missing filename", http.StatusBadRequest)
+		return
+	}
 
-	http.HandleFunc("/movies", listMoviesHandler)
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Read the file content into memory
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read file content", http.StatusInternalServerError)
+		return
+	}
+
+	pathToSaveTo := "./movies/" + filename
+	err = os.WriteFile(pathToSaveTo, fileBytes, 0644)
+	if err != nil {
+		http.Error(w, "Failed to save movie", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("Movie uploaded successfully"))
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Filename")
+
+		// Handle preflight OPTIONS request
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func main() {
+	// Create a new ServeMux
+	mux := http.NewServeMux()
+
+	// Register your handlers
+	mux.HandleFunc("/stream/", streamMovieHandler)
+	mux.HandleFunc("/movies", listMoviesHandler)
+	mux.HandleFunc("/add", addMovieHandler)
+
+	// Wrap the ServeMux with the CORS middleware
+	corsHandler := corsMiddleware(mux)
 
 	fmt.Println("Starting media server on http://localhost:8080...")
-	err := http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", corsHandler)
 	if err != nil {
 		return
 	}
