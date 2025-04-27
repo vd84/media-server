@@ -1,156 +1,99 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
+	"log"
+	"mediaserver/controllers"
+	db2 "mediaserver/db"
 	"net/http"
 	"os"
-	"path"
-	"strconv"
 	"strings"
 )
 
-// Serve a static file (movie) based on its ID with optional streaming support.
-func streamMovieHandler(w http.ResponseWriter, r *http.Request) {
-	fileName := strings.TrimPrefix(r.URL.Path, "/stream/")
-	if fileName == "" {
-		http.Error(w, "Movie ID is required", http.StatusBadRequest)
-		return
+func main() {
+	if err := controllers.EnsureMovieDirExists(); err != nil {
+		log.Fatal("Could not create movie directory:", err)
 	}
-
-	filePath := path.Join("./movies", fileName)
-	file, err := os.Open(filePath)
-	if err != nil {
-		http.Error(w, "File not found", http.StatusNotFound)
-		return
-	}
-	defer file.Close()
-
-	fileStat, err := file.Stat()
-	if err != nil {
-		http.Error(w, "Unable to retrieve file info", http.StatusInternalServerError)
-		return
-	}
-
-	rangeHeader := r.Header.Get("Range")
-	if rangeHeader != "" {
-		rangeStart, rangeEnd := parseRange(rangeHeader, fileStat.Size())
-
-		w.Header().Set("Content-Type", "video/mp4")
-		w.Header().Set("Accept-Ranges", "bytes")
-		w.Header().Set(
-			"Content-Range",
-			fmt.Sprintf("bytes %d-%d/%d", rangeStart, rangeEnd, fileStat.Size()),
-		)
-		w.WriteHeader(http.StatusPartialContent)
-
-		file.Seek(rangeStart, io.SeekStart)
-		io.CopyN(w, file, rangeEnd-rangeStart+1)
+	local := os.Getenv("LOCALDB") == "true"
+	var db *gorm.DB
+	var err error
+	if local {
+		db, err = db2.ConnectToLocalDb()
 	} else {
-		w.Header().Set("Content-Type", "video/mp4")
-		w.Header().Set("Content-Length", strconv.FormatInt(fileStat.Size(), 10))
-		io.Copy(w, file)
+		db, err = db2.ConnectToDb()
 	}
-}
-
-func parseRange(rangeHeader string, fileSize int64) (int64, int64) {
-	var start, end int64
-	fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end)
-	if end == 0 || end >= fileSize {
-		end = fileSize - 1
-	}
-	return start, end
-}
-
-func listMoviesHandler(w http.ResponseWriter, r *http.Request) {
-	// Path to the movies directory
-	movieDir := "./movies"
-
-	// Read directory contents
-	files, err := os.ReadDir(movieDir)
+	db2.RunMigration(db)
 	if err != nil {
-		http.Error(w, "Unable to list movies", http.StatusInternalServerError)
 		return
 	}
+	r := gin.Default()
 
-	var movies []string
-	for _, file := range files {
-		if !file.IsDir() { // Only include files
-			movies = append(movies, file.Name())
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"movies": movies,
+	r.Use()
+	r.Use(func(c *gin.Context) {
+		c.Set("db", db)
+		c.Next()
 	})
+	r.Use(CORSMiddleware())
+	r.Use(jwtMiddleware())
+
+	controllers.RegisterAccountEndpoints(r)
+	controllers.RegisterMovieEndpoints(r)
+
+	fmt.Println("Starting media server on http://localhost:8080...")
+	r.Run(":8080")
 }
 
-func addMovieHandler(w http.ResponseWriter, r *http.Request) {
-	filename := r.Header.Get("X-Filename")
-	if filename == "" {
-		http.Error(w, "Missing filename", http.StatusBadRequest)
-		return
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Authorization, Accept,X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
 	}
-
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Read the file content into memory
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "Failed to read file content", http.StatusInternalServerError)
-		return
-	}
-
-	pathToSaveTo := "./movies/" + filename
-	err = os.WriteFile(pathToSaveTo, fileBytes, 0644)
-	if err != nil {
-		http.Error(w, "Failed to save movie", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Movie uploaded successfully"))
 }
+func jwtMiddleware() gin.HandlerFunc {
+	jwtSecret := []byte(os.Getenv("JWTSECRET"))
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Filename")
-
-		// Handle preflight OPTIONS request
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
+	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/account") {
+			c.Next()
 			return
 		}
 
-		next.ServeHTTP(w, r)
-	})
-}
+		tokenString, err := c.Cookie("token")
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
 
-func main() {
-	// Create a new ServeMux
-	mux := http.NewServeMux()
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return jwtSecret, nil
+		})
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
 
-	// Register your handlers
-	mux.HandleFunc("/stream/", streamMovieHandler)
-	mux.HandleFunc("/movies", listMoviesHandler)
-	mux.HandleFunc("/add", addMovieHandler)
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
 
-	// Wrap the ServeMux with the CORS middleware
-	corsHandler := corsMiddleware(mux)
+		userID := uint(claims["user_id"].(float64))
+		c.Set("user_id", userID)
 
-	fmt.Println("Starting media server on http://localhost:8080...")
-	err := http.ListenAndServe(":8080", corsHandler)
-	if err != nil {
-		return
+		c.Next()
 	}
 }
