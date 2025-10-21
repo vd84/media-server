@@ -10,4 +10,7 @@ services:
       POSTGRES_PASSWORD: user1234
       POSTGRES_DB: localdb
     volumes:
-      - ./data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

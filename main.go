@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-	"gorm.io/gorm"
 	"log"
 	"mediaserver/controllers"
 	db2 "mediaserver/db"
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -43,7 +44,10 @@ func main() {
 	controllers.RegisterMovieEndpoints(r)
 
 	fmt.Println("Starting media server on http://localhost:8080...")
-	r.Run(":8080")
+	err = r.Run(":8080")
+	if err != nil {
+		return
+	}
 }
 
 func CORSMiddleware() gin.HandlerFunc {
