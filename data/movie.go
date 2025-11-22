@@ -12,13 +12,15 @@ type Movie struct {
 	Title     string
 	Filename  string
 	CreatedAt time.Time
-	OmdbId    string
+	OmdbMovie OmdbMovie `gorm:"foreignkey:OmdbId;references:IMDBID;constraint:OnDelete:CASCADE;"`
+	OmdbId    string    `gorm:"foreignkey:IMDBID;references:IMDBID;constraint:OnDelete:CASCADE;"`
 }
 
 func (m *Movie) ToView() *views.Movie {
 	return &views.Movie{
-		ID:       m.ID,
-		Title:    m.Title,
-		Filename: m.Filename,
+		ID:        m.ID,
+		Title:     m.Title,
+		Filename:  m.Filename,
+		OmdbMovie: m.OmdbMovie.ToView(),
 	}
 }

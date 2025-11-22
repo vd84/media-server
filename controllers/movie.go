@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"mediaserver/data"
+	"mediaserver/services"
 	"mediaserver/views"
 	"net/http"
 	"os"
@@ -94,7 +95,7 @@ func listMoviesHandler(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 	var movies []*data.Movie
-	db.Offset(offset).Limit(pageSize).Find(&movies)
+	db.Preload("OmdbMovie").Offset(offset).Limit(pageSize).Find(&movies)
 	var movieViews []*views.Movie
 	for _, movie := range movies {
 		movieViews = append(movieViews, movie.ToView())
@@ -116,6 +117,12 @@ func addMovieHandler(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+
+	imdbId := c.GetHeader("X-ImdbId")
+	if imdbId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing ImdbId header"})
 		return
 	}
 
@@ -143,12 +150,26 @@ func addMovieHandler(c *gin.Context) {
 	movie.Title = strings.Split(filename, ",")[0]
 	movie.CreatedAt = time.Now()
 	movie.ID = uuid.New()
+	movie.OmdbId = imdbId
+
+	omdbMovie, err := services.GetMovieById(imdbId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch movie details from OMDB"})
+		return
+	}
 
 	tx := db.Begin()
 
 	if err := tx.Create(&movie).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to create movie",
+		})
+		return
+	}
+
+	if err := tx.Create(&omdbMovie).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to create OMDB movie",
 		})
 		return
 	}

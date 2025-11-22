@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"io"
+	"mediaserver/data"
 	"mediaserver/views"
 	"net/http"
 	"os"
@@ -37,23 +38,32 @@ func GetMoviesBySearch(title string) ([]views.OmdbSearchMovie, error) {
 
 }
 
-func GetMovieById(id string) (views.OmdbMovie, error) {
+func GetMovieById(id string) (data.OmdbMovie, error) {
 	resp, err := http.Get(OmdbApiUrl + "?i=" + id + "&apikey=" + OmdbApiKey)
 	if err != nil {
-		return views.OmdbMovie{}, err
+		return data.OmdbMovie{}, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return views.OmdbMovie{}, err
+		return data.OmdbMovie{}, err
 	}
 
-	var movie views.OmdbMovie
+	var movie data.OmdbMovie
 	err = json.Unmarshal(body, &movie)
 	if err != nil {
-		return views.OmdbMovie{}, err
+		return data.OmdbMovie{}, err
 	}
 
 	return movie, nil
+}
+
+func GetMovieViewById(id string) (*views.OmdbMovie, error) {
+	movie, err := GetMovieById(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return movie.ToView(), nil
 }

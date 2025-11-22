@@ -2,19 +2,16 @@ package data
 
 import (
 	"mediaserver/views"
-
-	"github.com/google/uuid"
 )
 
 type Rating struct {
-	ID      uuid.UUID `gorm:"primarykey"`
-	MovieID uuid.UUID
+	Id      uint   `json:"id" gorm:"unique;primaryKey;autoIncrement"`
+	MovieID string `gorm:"foreignkey:IMDBID;references:IMDBID;constraint:OnDelete:CASCADE;"`
 	Source  string
 	Value   string
 }
 
 type OmdbMovie struct {
-	ID         uuid.UUID `gorm:"primarykey"`
 	Title      string
 	Year       string
 	Rated      string
@@ -33,7 +30,7 @@ type OmdbMovie struct {
 	Metascore  string
 	IMDBRating string
 	IMDBVotes  string
-	IMDBID     string
+	IMDBID     string `gorm:"primarykey"`
 	Type       string
 	DVD        string
 	BoxOffice  string
