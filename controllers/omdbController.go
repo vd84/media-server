@@ -26,7 +26,7 @@ func searchOmdbMovieHandler(c *gin.Context) {
 func getOmdbMovieByIdHandler(c *gin.Context) {
 	movieId := c.Param("id")
 
-	res, err := services.GetMovieById(movieId)
+	res, err := services.GetMovieById(movieId, c)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to fetch data from OMDB"})
 		return

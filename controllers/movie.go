@@ -22,10 +22,11 @@ const movieDir = "./movies"
 
 func RegisterMovieEndpoints(e *gin.Engine) {
 	e.GET("/movies", listMoviesHandler)
-	e.GET("/stream/:filename", streamMovieHandler)
+	e.GET("/stream/:id", streamMovieHandler)
 	e.POST("/add", addMovieHandler)
-	e.DELETE("/delete/:filename", deleteMovieHandler)
+	e.DELETE("/delete/:id", deleteMovieHandler)
 	e.GET("/movies/count", getTotalMovieCount)
+	e.GET("/movies/:id", getMovieById)
 }
 
 func EnsureMovieDirExists() error {
@@ -33,13 +34,19 @@ func EnsureMovieDirExists() error {
 }
 
 func streamMovieHandler(c *gin.Context) {
-	fileName := c.Param("filename")
-	if fileName == "" {
+	id := c.Param("id")
+	if id == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Movie filename is required"})
 		return
 	}
 
-	filePath := path.Join(movieDir, fileName)
+	movie, err := services.GetMovieById(id, c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
+		return
+	}
+
+	filePath := path.Join(movieDir, movie.Filename)
 	file, err := os.Open(filePath)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
@@ -109,6 +116,18 @@ func listMoviesHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"movies": movieViews})
 }
 
+func getMovieById(c *gin.Context) {
+	var id = c.Param("id")
+
+	movie, err := services.GetMovieById(id, c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, movie.ToView())
+}
+
 func getTotalMovieCount(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
@@ -157,7 +176,7 @@ func addMovieHandler(c *gin.Context) {
 	movie.ID = uuid.New()
 	movie.OmdbId = imdbId
 
-	omdbMovie, err := services.GetMovieById(imdbId)
+	omdbMovie, err := services.GetOmdbMovieById(imdbId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch movie details from OMDB"})
 		return
@@ -201,22 +220,21 @@ func addMovieHandler(c *gin.Context) {
 
 func deleteMovieHandler(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
-	fileName := c.Param("filename")
-	if fileName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename is required"})
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Id is required"})
 		return
 	}
 
-	pathToDelete := path.Join(movieDir, fileName)
-	var movie data.Movie
-	var existingMovie = db.Model(data.Movie{}).Where("filename = ?", fileName).First(&movie)
+	movie, err := services.GetMovieById(id, c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
+		return
+	}
+
+	pathToDelete := path.Join(movieDir, movie.Filename)
 
 	tx := db.Begin()
-	if existingMovie.Error != nil {
-		tx.Rollback()
-		c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found in database"})
-		return
-	}
 
 	if err := tx.Delete(&movie).Error; err != nil {
 		tx.Rollback()
@@ -230,7 +248,7 @@ func deleteMovieHandler(c *gin.Context) {
 		return
 	}
 
-	err := os.Remove(pathToDelete)
+	err = os.Remove(pathToDelete)
 	if err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete movie"})

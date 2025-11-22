@@ -38,7 +38,7 @@ func GetMoviesBySearch(title string) ([]views.OmdbSearchMovie, error) {
 
 }
 
-func GetMovieById(id string) (data.OmdbMovie, error) {
+func GetOmdbMovieById(id string) (data.OmdbMovie, error) {
 	resp, err := http.Get(OmdbApiUrl + "?i=" + id + "&apikey=" + OmdbApiKey)
 	if err != nil {
 		return data.OmdbMovie{}, err
@@ -60,7 +60,7 @@ func GetMovieById(id string) (data.OmdbMovie, error) {
 }
 
 func GetMovieViewById(id string) (*views.OmdbMovie, error) {
-	movie, err := GetMovieById(id)
+	movie, err := GetOmdbMovieById(id)
 	if err != nil {
 		return nil, err
 	}
