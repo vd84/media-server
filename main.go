@@ -43,6 +43,7 @@ func main() {
 
 	controllers.RegisterAccountEndpoints(r)
 	controllers.RegisterMovieEndpoints(r)
+	controllers.RegiserOmdbEndpoints(r)
 
 	fmt.Println("Starting media server on http://localhost:8080...")
 	err = r.Run(":8080")

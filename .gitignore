@@ -26,3 +26,4 @@ go.work.sum
 
 /movies/
 /local/data/
+.vscode/launch.json
