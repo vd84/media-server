@@ -5,7 +5,7 @@ import (
 )
 
 type Rating struct {
-	Id      uint   `json:"id" gorm:"unique;primaryKey;autoIncrement"`
+	Id      uint   `gorm:"unique;primaryKey;autoIncrement"`
 	MovieID string `gorm:"foreignkey:IMDBID;references:IMDBID;constraint:OnDelete:CASCADE;"`
 	Source  string
 	Value   string
