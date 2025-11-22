@@ -13,7 +13,7 @@ import (
 
 const (
 	port     = 1433
-	database = "nurse_match"
+	database = "media_server"
 )
 
 func ConnectToLocalDb() (*gorm.DB, error) {
