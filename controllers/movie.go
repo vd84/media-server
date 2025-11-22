@@ -2,9 +2,6 @@ package controllers
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"gorm.io/gorm"
 	"io"
 	"mediaserver/data"
 	"mediaserver/views"
@@ -14,6 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const movieDir = "./movies"
@@ -171,6 +172,7 @@ func addMovieHandler(c *gin.Context) {
 }
 
 func deleteMovieHandler(c *gin.Context) {
+	db := c.MustGet("db").(*gorm.DB)
 	fileName := c.Param("filename")
 	if fileName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename is required"})
@@ -178,15 +180,37 @@ func deleteMovieHandler(c *gin.Context) {
 	}
 
 	pathToDelete := path.Join(movieDir, fileName)
+	var movie data.Movie
+	var existingMovie = db.Model(data.Movie{}).Where("filename = ?", fileName).First(&movie)
+
+	tx := db.Begin()
+	if existingMovie.Error != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found in database"})
+		return
+	}
+
+	if err := tx.Delete(&movie).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete movie from database"})
+		return
+	}
 
 	if _, err := os.Stat(pathToDelete); os.IsNotExist(err) {
+		tx.Rollback()
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
 	}
 
 	err := os.Remove(pathToDelete)
 	if err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete movie"})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
 		return
 	}
 
