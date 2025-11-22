@@ -36,3 +36,24 @@ func GetMoviesBySearch(title string) ([]views.OmdbSearchMovie, error) {
 	return movies, nil
 
 }
+
+func GetMovieById(id string) (views.OmdbMovie, error) {
+	resp, err := http.Get(OmdbApiUrl + "?i=" + id + "&apikey=" + OmdbApiKey)
+	if err != nil {
+		return views.OmdbMovie{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return views.OmdbMovie{}, err
+	}
+
+	var movie views.OmdbMovie
+	err = json.Unmarshal(body, &movie)
+	if err != nil {
+		return views.OmdbMovie{}, err
+	}
+
+	return movie, nil
+}

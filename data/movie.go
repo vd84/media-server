@@ -1,9 +1,10 @@
 package data
 
 import (
-	"github.com/google/uuid"
 	"mediaserver/views"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Movie struct {
@@ -11,6 +12,7 @@ type Movie struct {
 	Title     string
 	Filename  string
 	CreatedAt time.Time
+	OmdbId    string
 }
 
 func (m *Movie) ToView() *views.Movie {

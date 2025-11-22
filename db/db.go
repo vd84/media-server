@@ -2,12 +2,13 @@ package db
 
 import (
 	"fmt"
-	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlserver"
-	"gorm.io/gorm"
 	"log"
 	"mediaserver/data"
 	"os"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlserver"
+	"gorm.io/gorm"
 )
 
 const (
@@ -42,7 +43,7 @@ func ConnectToDb() (*gorm.DB, error) {
 }
 
 func RunMigration(db *gorm.DB) {
-	if err := db.AutoMigrate(&data.User{}, &data.Movie{}); err != nil {
+	if err := db.AutoMigrate(&data.User{}, &data.Movie{}, &data.OmdbMovie{}, &data.Rating{}); err != nil {
 		log.Fatal("Migration failed:", err)
 	}
 }
