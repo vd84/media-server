@@ -75,6 +75,7 @@ func listMoviesHandler(c *gin.Context) {
 	db := c.MustGet("db").(*gorm.DB)
 
 	page, err := strconv.Atoi(c.Query("page"))
+	searchTerm := c.Query("search")
 	if err != nil {
 		page = 1
 	}
@@ -95,7 +96,11 @@ func listMoviesHandler(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 	var movies []*data.Movie
-	db.Preload("OmdbMovie").Offset(offset).Limit(pageSize).Find(&movies)
+	searchTerm = strings.ToLower(searchTerm)
+	db.Joins("LEFT JOIN omdb_movies ON omdb_movies.imdb_id = movies.omdb_id").
+		Preload("OmdbMovie").
+		Where("LOWER(omdb_movies.title) LIKE ?", "%"+searchTerm+"%").
+		Offset(offset).Limit(pageSize).Find(&movies)
 	var movieViews []*views.Movie
 	for _, movie := range movies {
 		movieViews = append(movieViews, movie.ToView())
@@ -158,18 +163,20 @@ func addMovieHandler(c *gin.Context) {
 		return
 	}
 
-	tx := db.Begin()
+	movie.OmdbMovie = omdbMovie
 
-	if err := tx.Create(&movie).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to create movie",
-		})
-		return
-	}
+	tx := db.Begin()
 
 	if err := tx.Create(&omdbMovie).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to create OMDB movie",
+		})
+		return
+	}
+
+	if err := tx.Create(&movie).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to create movie",
 		})
 		return
 	}
