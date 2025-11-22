@@ -18,6 +18,7 @@ func main() {
 	if err := controllers.EnsureMovieDirExists(); err != nil {
 		log.Fatal("Could not create movie directory:", err)
 	}
+	os.Setenv("LOCALDB", "true")
 	local := os.Getenv("LOCALDB") == "true"
 	var db *gorm.DB
 	var err error
