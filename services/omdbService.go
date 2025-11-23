@@ -2,22 +2,43 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"mediaserver/data"
 	"mediaserver/views"
 	"net/http"
+	"net/url"
 	"os"
+	"time"
 )
 
-var OmdbApiUrl = "http://www.omdbapi.com/"
-var OmdbApiKey = os.Getenv("OMDB_API_KEY")
+var (
+	OmdbApiUrl = "http://www.omdbapi.com/"
+	OmdbApiKey = os.Getenv("OMDB_API_KEY")
+
+	httpClient = &http.Client{
+		Timeout: 5 * time.Second,
+	}
+)
 
 func GetMoviesBySearch(title string) ([]views.OmdbSearchMovie, error) {
-	resp, err := http.Get(OmdbApiUrl + "?s=" + title + "&apikey=" + OmdbApiKey)
+	if OmdbApiKey == "" {
+		return nil, errors.New("OMDB_API_KEY is not set")
+	}
+
+	escaped := url.QueryEscape(title)
+	reqUrl := fmt.Sprintf("%s?s=%s&apikey=%s", OmdbApiUrl, escaped, OmdbApiKey)
+
+	resp, err := httpClient.Get(reqUrl)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("omdb returned %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -28,22 +49,27 @@ func GetMoviesBySearch(title string) ([]views.OmdbSearchMovie, error) {
 	if err := json.Unmarshal(body, &movieData); err != nil {
 		return nil, err
 	}
-	movies := movieData.Search
-	err = json.Unmarshal(body, &movieData)
-	if err != nil {
-		return nil, err
-	}
 
-	return movies, nil
-
+	return movieData.Search, nil
 }
 
 func GetOmdbMovieById(id string) (data.OmdbMovie, error) {
-	resp, err := http.Get(OmdbApiUrl + "?i=" + id + "&apikey=" + OmdbApiKey)
+	if OmdbApiKey == "" {
+		return data.OmdbMovie{}, errors.New("OMDB_API_KEY is not set")
+	}
+
+	escaped := url.QueryEscape(id)
+	reqUrl := fmt.Sprintf("%s?i=%s&apikey=%s", OmdbApiUrl, escaped, OmdbApiKey)
+
+	resp, err := httpClient.Get(reqUrl)
 	if err != nil {
 		return data.OmdbMovie{}, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return data.OmdbMovie{}, fmt.Errorf("omdb returned %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -51,8 +77,7 @@ func GetOmdbMovieById(id string) (data.OmdbMovie, error) {
 	}
 
 	var movie data.OmdbMovie
-	err = json.Unmarshal(body, &movie)
-	if err != nil {
+	if err := json.Unmarshal(body, &movie); err != nil {
 		return data.OmdbMovie{}, err
 	}
 

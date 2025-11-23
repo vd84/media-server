@@ -43,7 +43,7 @@ func ConnectToDb() (*gorm.DB, error) {
 }
 
 func RunMigration(db *gorm.DB) {
-	if err := db.AutoMigrate(&data.User{}, &data.Movie{}, &data.OmdbMovie{}, &data.Rating{}, &data.Episode{}, &data.Series{}); err != nil {
+	if err := db.AutoMigrate(&data.User{}, &data.Movie{}, &data.OmdbMovie{}, &data.Rating{}, &data.Episode{}, &data.Series{}, &data.Season{}, &data.WatchData{}); err != nil {
 		log.Fatal("Migration failed:", err)
 	}
 }
